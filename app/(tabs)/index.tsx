@@ -1,98 +1,343 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import { Ionicons } from "@expo/vector-icons";
+import React, { useEffect, useState } from "react";
+import {
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  Image,
+  Platform,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import api from "../../src/api/api";
+import { useAuth } from "../../src/context/AuthContext";
 
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
+const COLORS = {
+  primary: "#FF6347",
+  secondary: "#1E90FF",
+  background: "#F9F9F9",
+  card: "#FFFFFF",
+  text: "#333333",
+  price: "#228B22",
+  placeholderText: "#A0A0A0",
+};
+
+interface Meal {
+  _id: string;
+  name: string;
+  description?: string;
+  price?: number;
+  imageUrl?: string;
+}
+
+const MealCard = ({ item }: { item: Meal }) => (
+  <TouchableOpacity style={styles.card}>
+    <View style={styles.imageContainer}>
+      {item.imageUrl ? (
+        <Image
+          source={{ uri: item.imageUrl }}
+          style={styles.image}
+          resizeMode="cover"
+        />
+      ) : (
+        <View
+          style={[
+            styles.image,
+            {
+              justifyContent: "center",
+              alignItems: "center",
+              backgroundColor: COLORS.background,
+            },
+          ]}
+        >
+          <Ionicons
+            name="image-outline"
+            size={50}
+            color={COLORS.placeholderText}
+          />
+        </View>
+      )}
+    </View>
+
+    <View style={styles.textContainer}>
+      <Text style={styles.name}>{item.name}</Text>
+      {item.description ? (
+        <Text style={styles.desc} numberOfLines={2}>
+          {item.description}
+        </Text>
+      ) : null}
+
+      <View style={styles.priceContainer}>
+        <Ionicons
+          name="pricetag-outline"
+          size={18}
+          color={COLORS.primary}
+          style={{ marginRight: 5 }}
+        />
+        {item.price !== undefined ? (
+          <Text style={styles.price}>
+            {item.price.toLocaleString()} FCFA
+          </Text>
+        ) : (
+          <Text style={styles.price}>Prix non spécifié</Text>
+        )}
+      </View>
+    </View>
+  </TouchableOpacity>
+);
 
 export default function HomeScreen() {
-  return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert('Share pressed')}
-            />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert('Delete pressed')}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
+  const { user, logout } = useAuth();
+  const [meals, setMeals] = useState<Meal[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [search, setSearch] = useState("");
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+  const handleLogout = () => {
+    Alert.alert(
+      "Déconnexion",
+      "Êtes-vous sûr de vouloir vous déconnecter ?",
+      [
+        { text: "Annuler", style: "cancel" },
+        {
+          text: "Oui, Déconnexion",
+          onPress: () => logout(),
+          style: "destructive",
+        },
+      ],
+      { cancelable: true }
+    );
+  };
+
+  useEffect(() => {
+    const fetchMeals = async () => {
+      setLoading(true);
+      setError("");
+      try {
+        const response = await api.get("/meals");
+
+        // ✅ Extraire correctement le tableau de repas
+        const mealsData = response.data?.data?.meals || [];
+        setMeals(mealsData);
+
+      } catch (e: any) {
+        console.error("Erreur fetch meals:", e.response?.data || e.message);
+        setError(
+          "Impossible de récupérer les repas. Veuillez vérifier la connexion."
+        );
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchMeals();
+  }, []);
+
+  // Filtrer les repas selon la recherche
+  const filteredMeals = Array.isArray(meals)
+    ? meals.filter(
+        (meal) =>
+          meal.name.toLowerCase().includes(search.toLowerCase()) ||
+          meal.description?.toLowerCase().includes(search.toLowerCase())
+      )
+    : [];
+
+  if (loading) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color={COLORS.primary} />
+        <Text style={{ marginTop: 10, color: COLORS.text }}>
+          Chargement des repas...
+        </Text>
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={styles.center}>
+        <Ionicons
+          name="alert-circle-outline"
+          size={50}
+          color={COLORS.primary}
+        />
+        <Text
+          style={{
+            color: COLORS.primary,
+            fontWeight: "bold",
+            marginTop: 10,
+          }}
+        >
+          {error}
+        </Text>
+        <Text style={{ color: COLORS.text, marginTop: 5 }}>
+          Veuillez réessayer plus tard.
+        </Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.container}>
+      {/* HEADER */}
+      <View style={styles.header}>
+        <View>
+          <Text style={styles.greeting}>
+            Bonjour, {user?.prenom || "Utilisateur"} !
+          </Text>
+          <Text style={styles.headerTitle}>Découvrez nos Repas 🤤</Text>
+        </View>
+        <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
+          <Ionicons name="log-out-outline" size={24} color={COLORS.primary} />
+        </TouchableOpacity>
+      </View>
+
+      {/* SEARCH BAR */}
+      <View style={styles.searchBar}>
+        <Ionicons
+          name="search-outline"
+          size={20}
+          color={COLORS.placeholderText}
+          style={{ marginRight: 10 }}
+        />
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Rechercher un plat..."
+          placeholderTextColor={COLORS.placeholderText}
+          value={search}
+          onChangeText={setSearch}
+        />
+      </View>
+
+      {/* MEALS LIST */}
+      <FlatList
+        data={filteredMeals}
+        keyExtractor={(item) => item._id}
+        renderItem={({ item }) => <MealCard item={item} />}
+        contentContainerStyle={styles.listContent}
+        ListEmptyComponent={
+          <View style={styles.center}>
+            <Ionicons
+              name="search-outline"
+              size={50}
+              color={COLORS.placeholderText}
+              style={{ marginBottom: 10 }}
+            />
+            <Text style={{ textAlign: "center", color: COLORS.text }}>
+              {search
+                ? "Aucun plat trouvé pour votre recherche."
+                : "Il n'y a pas encore de plats disponibles."}
+            </Text>
+          </View>
+        }
+      />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+  container: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+    paddingTop: Platform.OS === "android" ? 30 : 0,
   },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
+  header: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 15,
+    paddingTop: 15,
+    marginBottom: 10,
   },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
+  greeting: {
+    fontSize: 16,
+    color: COLORS.placeholderText,
+    fontWeight: "500",
+  },
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: "800",
+    color: COLORS.text,
+  },
+  logoutButton: {
+    padding: 5,
+    borderRadius: 20,
+    backgroundColor: COLORS.card,
+  },
+  searchBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: COLORS.card,
+    borderRadius: 10,
+    paddingHorizontal: 15,
+    paddingVertical: 10,
+    marginHorizontal: 15,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: COLORS.placeholderText + "30",
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 16,
+    color: COLORS.text,
+  },
+  listContent: {
+    paddingHorizontal: 15,
+    paddingBottom: 20,
+  },
+  center: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    minHeight: 200,
+  },
+  card: {
+    backgroundColor: COLORS.card,
+    borderRadius: 15,
+    marginBottom: 15,
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.1,
+    shadowRadius: 5,
+    elevation: 3,
+  },
+  imageContainer: {
+    width: "100%",
+    height: 180,
+  },
+  image: {
+    width: "100%",
+    height: "100%",
+  },
+  textContainer: {
+    padding: 15,
+  },
+  name: {
+    fontSize: 20,
+    fontWeight: "bold",
+    color: COLORS.text,
+  },
+  desc: {
+    fontSize: 14,
+    color: COLORS.placeholderText,
+    marginTop: 5,
+    marginBottom: 10,
+  },
+  priceContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 10,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.background,
+  },
+  price: {
+    fontSize: 18,
+    color: COLORS.primary,
+    fontWeight: "700",
   },
 });
