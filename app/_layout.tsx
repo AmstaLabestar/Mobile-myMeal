@@ -1,7 +1,8 @@
+// app/_layout.tsx
 import { AuthProvider, useAuth } from '@/src/context/AuthContext';
-import { router, Stack, useRootNavigationState } from 'expo-router';
+import { router, Stack, useRootNavigationState, useSegments } from 'expo-router';
 import React, { useEffect } from 'react';
-import { ActivityIndicator, View } from 'react-native';
+import { ActivityIndicator, Text, View } from 'react-native';
 
 /**
  * Composant NavigationRouter
@@ -9,43 +10,61 @@ import { ActivityIndicator, View } from 'react-native';
  */
 function NavigationRouter() {
   const { user, isLoading } = useAuth();
+  const segments = useSegments(); // Permet de lire le segment d'URL actuel
   const navigationState = useRootNavigationState();
 
+  // Détermine si l'utilisateur est sur une route du groupe auth
+  const isAuthGroup = segments[0] === '(auth)';
+
   useEffect(() => {
+    // 1. Attendre que la navigation soit prête
     if (!navigationState?.key) return;
 
-    if (isLoading) {
-      return;
-    }
+    // 2. Ne rien faire pendant le chargement initial
+    if (isLoading) return;
 
+    // Cas A: Utilisateur connecté
     if (user) {
-      // ✅ Utilisateur authentifié → Aller aux tabs
-      router.replace('/');
+      if (isAuthGroup) {
+        // Rediriger vers l'écran principal
+        router.replace('/');
+      }
     } else {
-      // ❌ Pas d'utilisateur → Aller au login
-      router.replace('/(auth)/login');
+      // Cas B: Utilisateur non connecté
+      if (!isAuthGroup) {
+        router.replace('/(auth)/login');
+      }
     }
-  }, [user, isLoading, navigationState?.key]);
+  }, [user, isLoading, navigationState?.key, isAuthGroup]);
 
-  // Écran de chargement
+  // Écran de chargement initial
   if (isLoading || !navigationState?.key) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F9F9F9' }}>
-        <ActivityIndicator size="large" color="#007AFF" />
+      <View
+        style={{
+          flex: 1,
+          justifyContent: 'center',
+          alignItems: 'center',
+          backgroundColor: '#F9F9F9',
+        }}
+      >
+        <ActivityIndicator size="large" color="#FF7043" />
+        <Text style={{ marginTop: 10, color: '#757575' }}>
+          Chargement de l&apos;application...
+        </Text>
       </View>
     );
   }
 
   return (
     <Stack screenOptions={{ headerShown: false }}>
-      <Stack.Screen 
-        name="(auth)" 
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen 
-        name="(tabs)" 
-        options={{ headerShown: false }}
-      />
+      {/* Groupe Auth */}
+      <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+
+      {/* Groupe Tabs / Application */}
+      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+
+      {/* Ajoutez d'autres routes de niveau supérieur si nécessaire */}
     </Stack>
   );
 }
@@ -60,8 +79,3 @@ export default function RootLayout() {
     </AuthProvider>
   );
 }
-
-
-
-
-
