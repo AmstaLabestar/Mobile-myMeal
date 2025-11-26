@@ -138,12 +138,12 @@ export default function ProfileScreen() {
     {
       icon: "person-circle-outline", 
       label: "Modifier le profil",
-      onPress: () => router.push('./EditProfileScreen'), 
+      onPress: () => router.push('/profile/EditProfileScreen'), 
     },
     {
       icon: "lock-closed-outline",
       label: "Changer le mot de passe",
-      onPress: () => router.push('./ChangePasswordScreen'),
+      onPress: () => router.push('/profile/ChangePasswordScreen'),
     },
   ];
 
@@ -176,7 +176,7 @@ export default function ProfileScreen() {
     {
         icon: "restaurant-outline",
         label: "Tableau de Bord Cuisinier",
-        onPress: () => Alert.alert("Gestion", "Navigation vers la gestion des repas."),
+        onPress: () => router.push('/cooker/CookerDashboardScreen'),
     },
     {
         icon: "people-circle-outline",

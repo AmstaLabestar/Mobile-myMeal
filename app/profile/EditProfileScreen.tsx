@@ -2,15 +2,15 @@ import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import React, { useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    Platform,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import api from "../../src/api/api";
 import { useAuth } from "../../src/context/AuthContext";
@@ -181,7 +181,7 @@ export default function EditProfileScreen() {
       {/* Lien vers le changement de mot de passe */}
       <TouchableOpacity 
         style={styles.passwordLink}
-        onPress={() => router.push('./ChangePasswordScreen')}
+        onPress={() => router.push('/profile/ChangePasswordScreen')}
 
         disabled={loading}
       >

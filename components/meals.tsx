@@ -11,7 +11,7 @@ import {
   TouchableOpacity, // Importé pour le bouton d'ajout au panier
   View,
 } from "react-native";
-import api from "../../src/api/api"; // Assurez-vous que le chemin est correct
+import api from "../src/api/api"; // Assurez-vous que le chemin est correct
 
 // === COULEURS MODERNES ===
 const COLORS = {

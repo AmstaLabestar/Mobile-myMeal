@@ -1,3 +1,4 @@
+
 import { Feather, Ionicons } from "@expo/vector-icons";
 import React, { useEffect, useState } from "react";
 import {
@@ -81,7 +82,6 @@ const RateMealModal = ({
       return;
     }
     onSubmit(rating, comment);
-    // Reset après soumission
     setRating(0);
     setComment("");
   };
@@ -100,7 +100,6 @@ const RateMealModal = ({
             
             <Text style={styles.modalSubtitle}>Quelle a été votre expérience ?</Text>
 
-            {/* ÉTOILES INTERACTIVES */}
             <View style={styles.starsContainer}>
               {[1, 2, 3, 4, 5].map((star) => (
                 <TouchableOpacity key={star} onPress={() => setRating(star)}>
@@ -114,7 +113,6 @@ const RateMealModal = ({
               ))}
             </View>
 
-            {/* CHAMP COMMENTAIRE */}
             <TextInput
               style={styles.commentInput}
               placeholder="Écrivez votre avis ici..."
@@ -125,7 +123,6 @@ const RateMealModal = ({
               onChangeText={setComment}
             />
 
-            {/* BOUTON D'ACTION */}
             <TouchableOpacity
               style={[styles.submitButton, loading && { opacity: 0.7 }]}
               onPress={handleSubmit}
@@ -144,7 +141,7 @@ const RateMealModal = ({
   );
 };
 
-// === COMPOSANT STAR RATING (VISUEL) ===
+// === COMPOSANT STAR RATING ===
 const StarRating = ({ average, count }: { average: number; count: number }) => {
   const roundedRating = Math.round(average * 10) / 10;
   return (
@@ -157,8 +154,22 @@ const StarRating = ({ average, count }: { average: number; count: number }) => {
 };
 
 // === COMPOSANT MEAL CARD ===
-const MealCard = ({ item, onRatePress }: { item: Meal; onRatePress: (meal: Meal) => void }) => (
-  <TouchableOpacity style={mealCardStyles.card} activeOpacity={0.9}>
+const MealCard = ({ 
+  item, 
+  onRatePress, 
+  onAddToCartPress, 
+  onDetailsPress 
+}: { 
+  item: Meal; 
+  onRatePress: (meal: Meal) => void; 
+  onAddToCartPress: (meal: Meal) => void;
+  onDetailsPress: (meal: Meal) => void;
+}) => (
+  <TouchableOpacity 
+    style={mealCardStyles.card} 
+    activeOpacity={0.9}
+    onPress={() => onDetailsPress(item)}
+  >
     <View style={mealCardStyles.imageContainer}>
       {item.imageUrl ? (
         <Image
@@ -172,7 +183,6 @@ const MealCard = ({ item, onRatePress }: { item: Meal; onRatePress: (meal: Meal)
         </View>
       )}
       
-      {/* Zone de note cliquable sur l'image */}
       <View style={mealCardStyles.topInfoContainer}>
         <TouchableOpacity onPress={() => onRatePress(item)} activeOpacity={0.7}>
           <StarRating average={item.ratingAverage ?? 0} count={item.ratingCount ?? 0} />
@@ -199,17 +209,35 @@ const MealCard = ({ item, onRatePress }: { item: Meal; onRatePress: (meal: Meal)
           <Text style={mealCardStyles.infoText}>{item.preparationTime} min</Text>
         </View>
 
-        <View style={mealCardStyles.priceContainer}>
-          <Text style={mealCardStyles.price}>
-            {item.price !== undefined ? `${item.price.toLocaleString()} FCFA` : "N/A"}
-          </Text>
+        <View style={mealCardStyles.priceAndAction}>
+          <View style={mealCardStyles.priceContainer}>
+            <Text style={mealCardStyles.price}>
+              {item.price !== undefined ? `${item.price.toLocaleString()} FCFA` : "N/A"}
+            </Text>
+          </View>
+          
+          <TouchableOpacity 
+            style={mealCardStyles.addToCartButton} 
+            onPress={(e) => {
+              e.stopPropagation();
+              onAddToCartPress(item);
+            }} 
+            activeOpacity={0.8}
+          >
+            <Feather name="plus" size={20} color={COLORS.card} />
+          </TouchableOpacity>
         </View>
       </View>
       
-      {/* Bouton Noter explicite en bas */}
-      <TouchableOpacity style={mealCardStyles.rateAction} onPress={() => onRatePress(item)}>
-         <Feather name="edit-2" size={14} color={COLORS.primary} />
-         <Text style={mealCardStyles.rateActionText}>Noter ce plat</Text>
+      <TouchableOpacity 
+        style={mealCardStyles.rateAction} 
+        onPress={(e) => {
+          e.stopPropagation();
+          onRatePress(item)
+        }}
+      >
+        <Feather name="edit-2" size={14} color={COLORS.primary} />
+        <Text style={mealCardStyles.rateActionText}>Noter ce plat</Text>
       </TouchableOpacity>
     </View>
   </TouchableOpacity>
@@ -224,11 +252,31 @@ export default function HomeScreen() {
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<CategoryKey>("all");
   const [isSearching, setIsSearching] = useState(false);
+  const [cartCount, setCartCount] = useState(0);
 
-  // États pour la modale
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedMeal, setSelectedMeal] = useState<Meal | null>(null);
   const [submittingRating, setSubmittingRating] = useState(false);
+  
+  const handleDetailsPress = (meal: Meal) => {
+    console.log(`Naviguer vers les détails du plat : ${meal.name}`);
+    Alert.alert("Détails du plat", `Vous navigueriez maintenant vers l'écran de détails pour ${meal.name}.`);
+  }
+
+  const handleAddToCart = (meal: Meal) => {
+    console.log(`Ajout de ${meal.name} au panier...`);
+    Alert.alert("Ajouté !", `${meal.name} a été ajouté à votre panier (simulé).`);
+    setCartCount(prev => prev + 1);
+  };
+
+  const handleGoToCart = () => {
+    if (cartCount === 0) {
+      Alert.alert("Panier vide", "Veuillez ajouter des plats à votre panier.");
+      return;
+    }
+    console.log("Naviguer vers l'écran Panier/Checkout...");
+    Alert.alert("Aller au Panier", `Vous avez ${cartCount} articles dans votre panier. Navigation vers la page de commande.`);
+  };
 
   const handleLogout = () => {
     Alert.alert(
@@ -284,7 +332,6 @@ export default function HomeScreen() {
     }
   };
 
-  // --- LOGIQUE DE NOTATION ---
   const handleOpenRateModal = (meal: Meal) => {
     setSelectedMeal(meal);
     setModalVisible(true);
@@ -295,7 +342,6 @@ export default function HomeScreen() {
     
     setSubmittingRating(true);
     try {
-      // Appel API : POST /meals/:id/reviews
       await api.post(`/meals/${selectedMeal._id}/reviews`, {
         rating: rating,
         review: comment
@@ -303,8 +349,6 @@ export default function HomeScreen() {
 
       Alert.alert("Merci !", "Votre avis a été ajouté avec succès.");
       setModalVisible(false);
-      
-      // Rafraîchir la liste pour voir la nouvelle moyenne et le compteur
       fetchMeals(selectedCategory, search); 
       
     } catch (e: any) {
@@ -371,15 +415,38 @@ export default function HomeScreen() {
 
   return (
     <View style={styles.container}>
-      {/* HEADER */}
+      {/* HEADER OPTIMISÉ */}
       <View style={styles.header}>
-        <View>
+        <View style={styles.headerLeft}>
           <Text style={styles.greeting}>Bonjour, {user?.prenom || "Utilisateur"}!</Text>
           <Text style={styles.headerTitle}>Trouvez votre Repas Idéal 🍽️</Text>
         </View>
-        <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
-          <Feather name="log-out" size={24} color={COLORS.primary} />
-        </TouchableOpacity>
+        
+        <View style={styles.headerRight}>
+          {/* BOUTON PANIER - PLUS VISIBLE */}
+          <TouchableOpacity 
+            onPress={handleGoToCart} 
+            style={[
+              styles.headerButton, 
+              cartCount > 0 && styles.cartButtonActive
+            ]}
+          >
+            <Feather name="shopping-cart" size={22} color={cartCount > 0 ? COLORS.card : COLORS.secondary} />
+            {cartCount > 0 && (
+              <View style={styles.cartBadge}>
+                <Text style={styles.cartBadgeText}>{cartCount > 9 ? '9+' : cartCount}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+          
+          {/* BOUTON LOGOUT - PLUS VISIBLE */}
+          <TouchableOpacity 
+            onPress={handleLogout} 
+            style={styles.headerButton}
+          >
+            <Feather name="log-out" size={22} color={COLORS.primary} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* SEARCH BAR */}
@@ -387,7 +454,7 @@ export default function HomeScreen() {
         <Feather name="search" size={20} color={COLORS.placeholderText} style={{ marginRight: 10 }} />
         <TextInput
           style={styles.searchInput}
-          placeholder="Rechercher un plat, un ingrédient..."
+          placeholder="Rechercher un plat..."
           placeholderTextColor={COLORS.placeholderText}
           value={search}
           onChangeText={handleSearch}
@@ -412,7 +479,12 @@ export default function HomeScreen() {
         data={meals}
         keyExtractor={(item) => item._id}
         renderItem={({ item }) => (
-          <MealCard item={item} onRatePress={handleOpenRateModal} />
+          <MealCard 
+            item={item} 
+            onRatePress={handleOpenRateModal} 
+            onAddToCartPress={handleAddToCart}
+            onDetailsPress={handleDetailsPress}
+          />
         )}
         contentContainerStyle={styles.listContent}
         ListEmptyComponent={
@@ -441,21 +513,96 @@ export default function HomeScreen() {
   );
 }
 
-// === STYLES ===
+// === STYLES OPTIMISÉS ===
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background, paddingTop: Platform.OS === "android" ? 40 : 0 },
-  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 20, paddingTop: 10, marginBottom: 10 },
-  greeting: { fontSize: 14, color: COLORS.subtitle, fontWeight: "500" },
-  headerTitle: { fontSize: 22, fontWeight: "800", color: COLORS.text },
-  logoutButton: { padding: 10, borderRadius: 12, backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border },
-  searchBar: { flexDirection: "row", alignItems: "center", backgroundColor: COLORS.card, borderRadius: 12, paddingHorizontal: 15, paddingVertical: 12, marginHorizontal: 20, marginBottom: 15, borderWidth: 1, borderColor: COLORS.border },
+  
+  header: { 
+    flexDirection: "row", 
+    justifyContent: "space-between", 
+    alignItems: "center", 
+    paddingHorizontal: 16, 
+    paddingVertical: 14,
+    marginBottom: 12,
+    backgroundColor: COLORS.card,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  
+  headerLeft: { flex: 1 },
+  headerRight: { flexDirection: 'row', gap: 10, alignItems: 'center' },
+  
+  greeting: { fontSize: 13, color: COLORS.subtitle, fontWeight: "500" },
+  headerTitle: { fontSize: 20, fontWeight: "800", color: COLORS.text, marginTop: 2 },
+  
+  headerButton: { 
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: COLORS.background,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+    position: 'relative',
+  },
+  
+  cartButtonActive: {
+    backgroundColor: COLORS.secondary,
+    borderColor: COLORS.secondary,
+  },
+  
+  cartBadge: {
+    position: 'absolute',
+    right: -8,
+    top: -8,
+    backgroundColor: COLORS.primary,
+    borderRadius: 12,
+    minWidth: 24,
+    height: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+    borderWidth: 2,
+    borderColor: COLORS.card,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+    elevation: 4,
+  },
+  
+  cartBadgeText: {
+    color: COLORS.card,
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  
+  searchBar: { 
+    flexDirection: "row", 
+    alignItems: "center", 
+    backgroundColor: COLORS.card, 
+    borderRadius: 12, 
+    paddingHorizontal: 15, 
+    paddingVertical: 12, 
+    marginHorizontal: 16, 
+    marginBottom: 15, 
+    borderWidth: 1, 
+    borderColor: COLORS.border,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  
   searchInput: { flex: 1, fontSize: 16, color: COLORS.text },
-  categoryListContent: { paddingHorizontal: 20, alignItems: "center" },
+  categoryListContent: { paddingHorizontal: 16, alignItems: "center" },
   categoryChip: { flexDirection: "row", alignItems: "center", backgroundColor: COLORS.card, paddingHorizontal: 15, paddingVertical: 10, borderRadius: 20, marginRight: 10, borderWidth: 1, borderColor: COLORS.border },
   categoryChipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
   categoryText: { fontSize: 14, fontWeight: "600", color: COLORS.subtitle },
   categoryTextActive: { color: COLORS.card },
-  listContent: { paddingHorizontal: 20, paddingBottom: 40 },
+  listContent: { paddingHorizontal: 16, paddingBottom: 40 },
   center: { flex: 1, justifyContent: "center", alignItems: "center", minHeight: 250 },
   
   // Styles Modal
@@ -505,7 +652,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 15,
     height: 100,
-    textAlignVertical: "top", // Pour Android
+    textAlignVertical: "top",
     color: COLORS.text,
     marginBottom: 20,
     borderWidth: 1,
@@ -538,11 +685,33 @@ const mealCardStyles = StyleSheet.create({
   name: { fontSize: 20, fontWeight: "bold", color: COLORS.text, flex: 1 },
   cookerName: { fontSize: 13, color: COLORS.primary, fontWeight: "500", marginBottom: 5 },
   desc: { fontSize: 14, color: COLORS.subtitle, marginTop: 5, marginBottom: 10 },
-  footerContainer: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: COLORS.border },
+  footerContainer: { 
+    flexDirection: "row", 
+    justifyContent: "space-between", 
+    alignItems: "center", 
+    marginTop: 10, 
+    paddingTop: 10, 
+    borderTopWidth: 1, 
+    borderTopColor: COLORS.border 
+  },
+  priceAndAction: { 
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
   infoItem: { flexDirection: "row", alignItems: "center" },
   infoText: { marginLeft: 5, fontSize: 14, color: COLORS.subtitle, fontWeight: "500" },
   priceContainer: {},
   price: { fontSize: 18, color: COLORS.accentGreen, fontWeight: "800" },
+  addToCartButton: {
+    backgroundColor: COLORS.primary,
+    borderRadius: 10, 
+    padding: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 40,
+    height: 40,
+  },
   rateAction: { flexDirection: 'row', alignItems: 'center', marginTop: 10, alignSelf: 'flex-start' },
   rateActionText: { color: COLORS.primary, marginLeft: 5, fontWeight: "600", fontSize: 14 }
 });

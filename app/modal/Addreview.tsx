@@ -1,10 +1,10 @@
 import React from 'react'
 import { Text, View } from 'react-native'
 
-export default function modal() {
+export default function Addreview() {
   return (
     <View>
-      <Text>modal</Text>
+      <Text>Addreview</Text>
     </View>
   )
 }
