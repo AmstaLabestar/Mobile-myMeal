@@ -3,6 +3,9 @@ import { AuthProvider, useAuth } from '@/src/context/AuthContext';
 import { router, Stack, useRootNavigationState, useSegments } from 'expo-router';
 import React, { useEffect } from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
+// app/_layout.tsx
+import { CartOrderProvider } from '@/src/context/CartOrderContext'; // <-- AJOUTE CETTE LIGNE
+// ... le reste du code
 
 /**
  * Composant NavigationRouter
@@ -75,7 +78,10 @@ function NavigationRouter() {
 export default function RootLayout() {
   return (
     <AuthProvider>
-      <NavigationRouter />
+      <CartOrderProvider>
+        <NavigationRouter />
+      </CartOrderProvider>
+      
     </AuthProvider>
   );
 }

@@ -1,17 +1,19 @@
-
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
-import { router } from "expo-router";
-import React from "react";
+import { router, useFocusEffect } from "expo-router";
+import React, { useCallback, useState } from "react";
 
 import {
+    ActivityIndicator,
     Alert,
     Platform,
+    RefreshControl,
     ScrollView,
     StyleSheet,
     Text,
     TouchableOpacity,
     View
 } from "react-native";
+import api from '../../src/api/api';
 
 // === COULEURS MODERNES ===
 const COLORS = {
@@ -29,7 +31,7 @@ const COLORS = {
 };
 
 // ===============================================
-// 📊 Composants Réutilisables
+// 📊 TYPES ET COMPOSANTS RÉUTILISABLES
 // ===============================================
 
 interface StatCardProps {
@@ -49,23 +51,33 @@ const StatCard: React.FC<StatCardProps> = ({ icon, label, value, color }) => (
     </View>
 );
 
-interface OrderItem {
+export interface OrderItem {
     id: string;
     client: string;
     time: string;
-    status: 'pending' | 'preparing' | 'ready';
+    status: 'pending' | 'preparing' | 'ready' | 'delivering' | 'cancelled';
     items: number;
+    totalPrice: number;
+    deliveryAddress?: string;
+    deliveryOption?: string;
+    createdAt?: string;
 }
 
-const OrderRow: React.FC<{ order: OrderItem }> = ({ order }) => {
+const OrderRow: React.FC<{ order: OrderItem, onPress: () => void }> = ({ order, onPress }) => {
     const getStatusStyle = (status: OrderItem['status']) => {
         switch (status) {
             case 'pending':
-                return { color: COLORS.warning, text: 'En Attente', icon: 'clock-outline' };
+                return { color: COLORS.warning, text: 'Reçue', icon: 'bell-ring' };
             case 'preparing':
-                return { color: COLORS.secondary, text: 'En Préparation', icon: 'fire' };
+                return { color: COLORS.secondary, text: 'En Cuisine', icon: 'fire' };
             case 'ready':
                 return { color: COLORS.success, text: 'Prête', icon: 'check-circle' };
+            case 'delivering':
+                return { color: COLORS.primary, text: 'En Livraison', icon: 'bike' };
+            case 'cancelled':
+                return { color: COLORS.danger, text: 'Annulée', icon: 'close-circle' };
+            default:
+                return { color: COLORS.subtitle, text: 'Inconnu', icon: 'help' };
         }
     };
 
@@ -74,26 +86,28 @@ const OrderRow: React.FC<{ order: OrderItem }> = ({ order }) => {
     return (
         <TouchableOpacity 
             style={staticStyles.orderRow} 
-            onPress={() => Alert.alert("Détail Commande", `Commande #${order.id.substring(0, 8)}\n${order.items} articles`)}
+            onPress={onPress} 
             activeOpacity={0.7}
+            disabled={order.status === 'cancelled'}
         >
             <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
                 <View style={[staticStyles.statusIndicator, { backgroundColor: statusInfo.color }]} />
                 
                 <View style={{ flex: 1 }}>
-                    <Text style={staticStyles.orderIdText}>#{order.id.substring(0, 8)}</Text>
-                    <Text style={staticStyles.orderClientText}>{order.client} • {order.items} articles</Text>
+                    <Text style={staticStyles.orderIdText}>#{order.id.substring(order.id.length - 6).toUpperCase()}</Text>
+                    <Text style={staticStyles.orderClientText}>{order.client} • {order.items} article{order.items > 1 ? 's' : ''}</Text>
                 </View>
             </View>
             
             <View style={{ alignItems: 'flex-end' }}>
                 <View style={[staticStyles.statusBadge, { borderColor: statusInfo.color }]}>
-                    <Ionicons name={statusInfo.icon as any} size={14} color={statusInfo.color} style={{ marginRight: 4 }} />
+                    <MaterialCommunityIcons name={statusInfo.icon as any} size={14} color={statusInfo.color} style={{ marginRight: 4 }} />
                     <Text style={[staticStyles.orderStatus, { color: statusInfo.color }]}>
                         {statusInfo.text}
                     </Text>
                 </View>
                 <Text style={staticStyles.orderTime}>{order.time}</Text>
+                <Text style={staticStyles.orderPrice}>{order.totalPrice.toLocaleString()} FCFA</Text>
             </View>
         </TouchableOpacity>
     );
@@ -104,17 +118,223 @@ const OrderRow: React.FC<{ order: OrderItem }> = ({ order }) => {
 // ===============================================
 
 export default function CookerDashboardScreen() {
-    const statsData = [
-        { icon: "food-drumstick", label: "Plats Actifs", value: 45, color: COLORS.primary },
-        { icon: "receipt", label: "Commandes J-1", value: 12, color: COLORS.secondary },
-        { icon: "star-circle", label: "Note Moyenne", value: '4.7 / 5', color: COLORS.success },
-    ];
+    const [orders, setOrders] = useState<OrderItem[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
+    const [stats, setStats] = useState({
+        activeMeals: 0,
+        activeOrders: 0,
+        averageRating: '0.0 / 5'
+    });
 
-    const currentOrders: OrderItem[] = [
-        { id: 'ORD001234', client: 'Alice Dupont', time: '12:35', status: 'preparing', items: 3 },
-        { id: 'ORD001235', client: 'Bob Martin', time: '12:40', status: 'pending', items: 2 },
-        { id: 'ORD001236', client: 'Charlie Lee', time: '12:45', status: 'pending', items: 1 },
-        { id: 'ORD001237', client: 'Diana Prince', time: '12:55', status: 'ready', items: 4 },
+    // ✅ MAPPING CORRECT DES STATUTS
+    const mapBackendStatusToFrontend = (status: string): OrderItem['status'] => {
+        switch (status) {
+            case 'reçu': return 'pending';
+            case 'acceptée': return 'preparing';
+            case 'préparée': return 'ready';
+            case 'en_livraison': return 'delivering';
+            case 'refusée': 
+            case 'cancelled': return 'cancelled';
+            default: return 'pending';
+        }
+    };
+
+    // ✅ FORMAT INTELLIGENT DE LA DATE/HEURE
+    const formatOrderTime = (dateString: string): string => {
+        try {
+            const date = new Date(dateString);
+            const now = new Date();
+            const diffMs = now.getTime() - date.getTime();
+            const diffMins = Math.floor(diffMs / 60000);
+            const diffHours = Math.floor(diffMins / 60);
+            const diffDays = Math.floor(diffHours / 24);
+
+            // Moins d'une heure : "Il y a X min"
+            if (diffMins < 60) {
+                return diffMins <= 1 ? "À l'instant" : `Il y a ${diffMins} min`;
+            }
+            
+            // Moins de 24h : "Il y a X h"
+            if (diffHours < 24) {
+                return `Il y a ${diffHours}h`;
+            }
+            
+            // Moins de 7 jours : "Il y a X jours"
+            if (diffDays < 7) {
+                return `Il y a ${diffDays}j`;
+            }
+            
+            // Sinon : format date court
+            return date.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' });
+        } catch (error) {
+            return 'Date invalide';
+        }
+    };
+    
+    // ✅ FETCHING CORRIGÉ DES COMMANDES
+    const fetchCookOrders = async () => {
+        try {
+            console.log('📡 Chargement des commandes cuisinier...');
+            
+            const response = await api.get('/order/cooker-orders'); 
+            
+            console.log('📦 Réponse brute:', JSON.stringify(response.data, null, 2));
+            
+            // Gestion flexible de la structure de réponse
+            const rawOrders = response.data.data?.orders 
+                || response.data.orders 
+                || response.data.data 
+                || [];
+
+            console.log(`✅ ${rawOrders.length} commande(s) reçue(s)`);
+
+            // ✅ MAPPING ROBUSTE DES DONNÉES
+            const formattedOrders: OrderItem[] = rawOrders.map((order: any) => {
+                // Extraction sécurisée des données utilisateur
+                const user = order.user || order.client || {};
+                const clientName = user.prenom && user.nom 
+                    ? `${user.prenom} ${user.nom}` 
+                    : user.name || 'Client';
+
+                // Calcul du nombre d'items
+                const orderItems = order.orderItems || order.items || [];
+                const itemsCount = orderItems.reduce((sum: number, item: any) => 
+                    sum + (item.quantity || 1), 0
+                );
+
+                // Extraction du total
+                const totalPrice = order.totalAmount || order.total || 0;
+
+                // Format de la date
+                const createdAt = order.createdAt || order.date || new Date().toISOString();
+
+                return {
+                    id: order._id || order.id,
+                    client: clientName,
+                    time: formatOrderTime(createdAt),
+                    createdAt: createdAt,
+                    status: mapBackendStatusToFrontend(order.status || 'reçu'),
+                    items: itemsCount,
+                    totalPrice: totalPrice,
+                    deliveryAddress: order.deliveryAddress,
+                    deliveryOption: order.deliveryOption,
+                };
+            });
+
+            // Tri par date décroissante (plus récent en premier)
+            formattedOrders.sort((a, b) => {
+                const dateA = new Date(a.createdAt || 0).getTime();
+                const dateB = new Date(b.createdAt || 0).getTime();
+                return dateB - dateA;
+            });
+
+            console.log('✅ Commandes formatées:', formattedOrders.length);
+
+            setOrders(formattedOrders);
+
+            // Mise à jour des stats
+            setStats({
+                activeMeals: stats.activeMeals, // À connecter à une vraie API
+                activeOrders: formattedOrders.filter(o => 
+                    o.status !== 'cancelled' && o.status !== 'delivering'
+                ).length,
+                averageRating: stats.averageRating, // À connecter à une vraie API
+            });
+
+        } catch (error: any) {
+            console.error("❌ Erreur chargement commandes cuisinier:", error);
+            console.error("Détails:", error.response?.data);
+            
+            Alert.alert(
+                "Erreur de chargement", 
+                error.response?.data?.message || "Impossible de charger les commandes"
+            );
+        } finally {
+            setLoading(false);
+            setRefreshing(false);
+        }
+    };
+    
+    // ✅ MISE À JOUR DU STATUT CORRIGÉE
+    const updateOrderStatus = async (orderId: string, newStatus: string) => {
+        try {
+            console.log(`🔄 Mise à jour: ${orderId} → ${newStatus}`);
+            
+            await api.patch(`/order/${orderId}/status`, { status: newStatus });
+            
+            // Recharger les commandes
+            await fetchCookOrders();
+            
+            Alert.alert("Succès ✅", `Commande passée au statut "${newStatus}"`);
+        } catch (error: any) {
+            console.error("❌ Erreur mise à jour statut:", error);
+            console.error("Détails:", error.response?.data);
+            
+            Alert.alert(
+                "Erreur", 
+                error.response?.data?.message || "Impossible de mettre à jour le statut"
+            );
+        }
+    };
+
+    // ✅ GESTION DES CLICS SUR COMMANDES
+    const handleOrderPress = (order: OrderItem) => {
+        let backendStatus = '';
+        let actionLabel = '';
+
+        if (order.status === 'pending') {
+            backendStatus = 'acceptée';
+            actionLabel = 'Accepter et démarrer la préparation 🍳';
+        } else if (order.status === 'preparing') {
+            backendStatus = 'préparée';
+            actionLabel = 'Marquer comme prêt à livrer ✅';
+        } else if (order.status === 'ready') {
+            backendStatus = 'en_livraison';
+            actionLabel = 'Marquer en livraison 🚴';
+        } else {
+            // Pour delivered ou cancelled : afficher juste les détails
+            const deliveryInfo = order.deliveryOption === 'livraison' 
+                ? `\nAdresse: ${order.deliveryAddress || 'Non spécifiée'}`
+                : '\nMode: Retrait sur place';
+
+            Alert.alert(
+                "Détails Commande", 
+                `Commande #${order.id.substring(order.id.length - 6)}\nClient: ${order.client}\n${order.items} article(s)\nTotal: ${order.totalPrice.toLocaleString()} FCFA${deliveryInfo}`,
+                [{ text: "OK", style: "cancel" }]
+            );
+            return;
+        }
+
+        Alert.alert(
+            "Action Commande",
+            `${actionLabel}\n\nCommande: #${order.id.substring(order.id.length - 6)}\nClient: ${order.client}`,
+            [
+                { text: "Annuler", style: "cancel" },
+                { 
+                    text: "Confirmer", 
+                    onPress: () => updateOrderStatus(order.id, backendStatus) 
+                }
+            ]
+        );
+    };
+
+    // Charge les données quand l'écran est focus
+    useFocusEffect(
+        useCallback(() => {
+            fetchCookOrders();
+        }, [])
+    );
+
+    const onRefresh = () => {
+        setRefreshing(true);
+        fetchCookOrders();
+    };
+
+    const statsData = [
+        { icon: "food-drumstick", label: "Plats Actifs", value: stats.activeMeals, color: COLORS.primary },
+        { icon: "receipt", label: "Commandes Actives", value: stats.activeOrders, color: COLORS.secondary },
+        { icon: "star-circle", label: "Note Moyenne", value: stats.averageRating, color: COLORS.success },
     ];
 
     const handleManagementAction = (action: string) => {
@@ -131,6 +351,9 @@ export default function CookerDashboardScreen() {
         <ScrollView 
             style={staticStyles.container} 
             contentContainerStyle={staticStyles.scrollContent}
+            refreshControl={
+                <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.primary]} />
+            }
         >
             {/* HEADER */}
             <View style={staticStyles.header}>
@@ -158,21 +381,27 @@ export default function CookerDashboardScreen() {
                 <View style={staticStyles.sectionHeader}>
                     <Text style={staticStyles.sectionTitle}>🔥 Commandes en Cours</Text>
                     <View style={staticStyles.orderCountBadge}>
-                        <Text style={staticStyles.orderCountText}>{currentOrders.length}</Text>
+                        <Text style={staticStyles.orderCountText}>{orders.length}</Text>
                     </View>
                 </View>
                 <View style={staticStyles.card}>
-                    {currentOrders.length > 0 ? (
-                        currentOrders.map((order, index) => (
+                    {loading ? (
+                        <ActivityIndicator size="large" color={COLORS.primary} style={{ margin: 20 }} />
+                    ) : orders.length > 0 ? (
+                        orders.map((order, index) => (
                             <React.Fragment key={order.id}>
-                                <OrderRow order={order} />
-                                {index < currentOrders.length - 1 && <View style={staticStyles.divider} />}
+                                <OrderRow 
+                                    order={order} 
+                                    onPress={() => handleOrderPress(order)} 
+                                />
+                                {index < orders.length - 1 && <View style={staticStyles.divider} />}
                             </React.Fragment>
                         ))
                     ) : (
                         <View style={staticStyles.emptyState}>
-                            <Ionicons name="checkmark-done-circle-outline" size={48} color={COLORS.success} style={{ marginBottom: 10 }} />
-                            <Text style={staticStyles.noDataText}>Aucune commande en préparation.</Text>
+                            <Ionicons name="restaurant-outline" size={48} color={COLORS.subtitle} style={{ marginBottom: 10 }} />
+                            <Text style={staticStyles.noDataText}>Aucune commande pour le moment.</Text>
+                            <Text style={staticStyles.noDataSubtext}>Les nouvelles commandes apparaîtront ici.</Text>
                         </View>
                     )}
                 </View>
@@ -182,7 +411,6 @@ export default function CookerDashboardScreen() {
             <View style={staticStyles.sectionContainer}>
                 <Text style={staticStyles.sectionTitle}>⚡ Gestion Rapide</Text>
                 <View style={staticStyles.actionGrid}>
-                    {/* Action 1 */}
                     <TouchableOpacity
                         style={[staticStyles.actionCard, { borderLeftWidth: 4, borderLeftColor: COLORS.primary }]}
                         onPress={() => handleManagementAction("Liste des Plats")}
@@ -195,7 +423,6 @@ export default function CookerDashboardScreen() {
                         <Text style={staticStyles.actionSubtitle}>Voir & éditer</Text>
                     </TouchableOpacity>
 
-                    {/* Action 2 */}
                     <TouchableOpacity
                         style={[staticStyles.actionCard, { borderLeftWidth: 4, borderLeftColor: COLORS.secondary }]}
                         onPress={() => handleManagementAction("Ajouter un Nouveau Plat")}
@@ -371,19 +598,31 @@ const staticStyles = StyleSheet.create({
         fontWeight: '700',
     },
     orderTime: {
-        fontSize: 12,
+        fontSize: 11,
         color: COLORS.placeholderText,
+        marginBottom: 2,
+    },
+    orderPrice: {
+        fontSize: 13,
+        color: COLORS.text,
+        fontWeight: '600',
     },
     emptyState: {
-        paddingVertical: 30,
+        paddingVertical: 40,
         alignItems: 'center',
         justifyContent: 'center',
     },
     noDataText: {
         textAlign: 'center',
-        color: COLORS.subtitle,
-        fontWeight: '500',
+        color: COLORS.text,
+        fontWeight: '600',
         fontSize: 15,
+    },
+    noDataSubtext: {
+        textAlign: 'center',
+        color: COLORS.subtitle,
+        fontSize: 13,
+        marginTop: 6,
     },
     orderCountBadge: {
         backgroundColor: COLORS.primary,

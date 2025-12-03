@@ -1,511 +1,458 @@
-
 import { Feather, Ionicons } from "@expo/vector-icons";
+import { Picker } from "@react-native-picker/picker";
+import * as ImagePicker from "expo-image-picker";
 import React, { useState } from "react";
 import {
+    ActivityIndicator,
     Alert,
+    Image,
     Platform,
     ScrollView,
     StyleSheet,
-    Switch,
     Text,
     TextInput,
     TouchableOpacity,
     View,
 } from "react-native";
+import api from "../../src/api/api"; // <-- Vérifiez que ce chemin est correct
 
-// === COULEURS MODERNES ===
+// === COULEURS MODERNES & UX ===
 const COLORS = {
-    primary: "#FF7043",
-    secondary: "#1E88E5",
-    background: "#F7F8F9", 
+    primary: "#FF7043", // Orange Chaud
+    secondary: "#1E88E5", // Bleu Vif
+    background: "#F7F8F9", // Arrière-plan léger
     card: "#FFFFFF",
-    text: "#212121", 
-    subtitle: "#757575", 
-    placeholderText: "#A0A0A0",
+    text: "#212121",
+    subtitle: "#757575",
     border: "#E0E0E0",
-    danger: "#EF5350", 
+    error: "#EF5350",
     success: "#4CAF50",
 };
 
-const CATEGORIES = ["Plat Principal", "Entrée", "Dessert", "Boisson", "Végétarien"];
-
-// === COMPOSANT INPUT FIELD RÉUTILISABLE ===
-interface InputFieldProps {
-    label: string;
-    placeholder: string;
-    value: string;
-    onChangeText: (text: string) => void;
-    multiline?: boolean;
-    keyboardType?: 'default' | 'numeric';
-    iconName?: string;
-    required?: boolean;
-}
-
-const InputField: React.FC<InputFieldProps> = ({ 
-    label, placeholder, value, onChangeText, multiline = false, keyboardType = 'default', iconName, required = false
-}) => (
-    <View style={styles.inputGroup}>
-        <View style={styles.labelContainer}>
-            <Text style={styles.inputLabel}>{label}</Text>
-            {required && <Text style={styles.requiredAsterisk}>*</Text>}
-        </View>
-        <View style={styles.inputContainer}>
-            {iconName && (
-                <Ionicons name={iconName as any} size={18} color={COLORS.secondary} style={{ marginRight: 10 }} />
-            )}
-            <TextInput
-                style={[styles.input, multiline && styles.multilineInput]}
-                placeholder={placeholder}
-                placeholderTextColor={COLORS.placeholderText}
-                value={value}
-                onChangeText={onChangeText}
-                multiline={multiline}
-                keyboardType={keyboardType}
-            />
-        </View>
-    </View>
-);
-
 // ===============================================
-// 🍽️ COMPOSANT PRINCIPAL
+// 📋 COMPOSANT PRINCIPAL : AddMealScreen
 // ===============================================
-
-export default function AddDishScreen() {
-    const [dishName, setDishName] = useState("");
+export default function AddMealScreen() {
+    // --- États du Formulaire ---
+    const [name, setName] = useState("");
     const [description, setDescription] = useState("");
-    const [price, setPrice] = useState("");
-    const [category, setCategory] = useState(CATEGORIES[0]);
     const [ingredients, setIngredients] = useState("");
-    const [isAvailable, setIsAvailable] = useState(true);
-    const [imageUploaded, setImageUploaded] = useState(false);
+    const [price, setPrice] = useState("");
+    const [preparationTime, setPreparationTime] = useState("");
+    const [category, setCategory] = useState("plat_principal");
+    const [image, setImage] = useState<string | null>(null);
+
     const [loading, setLoading] = useState(false);
 
-    const handleCategoryChange = () => {
-        const currentIndex = CATEGORIES.indexOf(category);
-        const nextIndex = (currentIndex + 1) % CATEGORIES.length;
-        setCategory(CATEGORIES[nextIndex]);
+    // --- LOGIQUE D'UPLOAD D'IMAGE (Optimisé pour la robustesse) ---
+    const uploadImage = async (): Promise<string | null> => {
+        if (!image) return null;
+
+        try {
+            // Assure-toi que le nom et le type sont corrects pour le backend
+            const fileExtension = image.split('.').pop();
+            const mimeType = `image/${fileExtension === 'jpg' ? 'jpeg' : fileExtension}`;
+            
+            const formData = new FormData();
+            formData.append("file", {
+                uri: image,
+                name: `meal.${fileExtension}`,
+                type: mimeType,
+            } as any);
+
+            // Affiche un message de chargement temporaire
+            Alert.alert("Téléchargement", "Image en cours d'envoi...");
+            
+            const response = await api.post("/upload/image", formData, {
+                headers: { "Content-Type": "multipart/form-data" },
+            });
+
+            // L'alerte disparaîtra lors du Alert.alert de succès/erreur global
+            return response.data.url; // L'URL publique de l'image
+        } catch (error: any) {
+            console.error("❌ Erreur upload:", error.response?.data || error.message);
+            Alert.alert(
+                "Erreur d'Upload", 
+                error.response?.data?.message || "Échec de l'upload de l'image. Veuillez réessayer."
+            );
+            return null;
+        }
     };
 
-    const handleImageUpload = () => {
-        Alert.alert("📷 Téléchargement d'Image", "Intégrer ici 'expo-image-picker' pour choisir une photo du plat.", [
-            { text: "Simuler l'upload", onPress: () => setImageUploaded(true) },
-            { text: "Annuler", style: "cancel" }
-        ]);
-    };
-
-    const handleSaveDish = async () => {
-        if (!dishName.trim()) {
-            Alert.alert("❌ Erreur", "Le nom du plat est obligatoire.");
+    // --- LOGIQUE DE SÉLECTION D'IMAGE ---
+    const pickImage = async () => {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== 'granted') {
+            Alert.alert("Permission requise", "Nous avons besoin de la permission d'accéder à la galerie pour choisir une image.");
             return;
         }
-        if (!price.trim()) {
-            Alert.alert("❌ Erreur", "Le prix est obligatoire.");
-            return;
+
+        let result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            quality: 0.7,
+            allowsEditing: true,
+            aspect: [4, 3], // Format d'édition conseillé
+        });
+
+        if (!result.canceled) {
+            setImage(result.assets[0].uri);
+        }
+    };
+
+    // --- LOGIQUE DE SOUMISSION DU FORMULAIRE (Création du Repas) ---
+    const handleSubmit = async () => {
+        // Validation basique
+        if (!name || !price || !preparationTime) {
+            return Alert.alert("Champs Manquants", "Veuillez remplir au moins le nom, le prix et le temps de préparation.");
+        }
+        
+        const numericPrice = parseFloat(price.replace(',', '.')); // Gère la virgule
+        const numericTime = parseInt(preparationTime, 10);
+
+        if (isNaN(numericPrice) || numericPrice <= 0 || isNaN(numericTime) || numericTime <= 0) {
+             return Alert.alert("Erreur de Format", "Le prix et le temps de préparation doivent être des nombres positifs valides.");
         }
 
         setLoading(true);
-        const dishData = {
-            dishName: dishName.trim(),
-            description: description.trim(),
-            price: parseFloat(price.replace(',', '.')),
-            category,
-            ingredients: ingredients.trim(),
-            isAvailable,
-        };
 
-        setTimeout(() => {
-            console.log("Plat à envoyer à l'API:", dishData);
-            setLoading(false);
+        let uploadedImageUrl = null;
+
+        // 1. Upload de l'image si elle est présente
+        if (image) {
+            uploadedImageUrl = await uploadImage();
+            // Si l'upload échoue, uploadImage affiche déjà l'alerte et retourne null, on arrête
+            if (!uploadedImageUrl) {
+                setLoading(false);
+                return;
+            }
+        }
+
+        // 2. Envoi des données du repas
+        try {
+            const payload = {
+                name,
+                description,
+                // Assure la robustesse, même si la chaîne est vide
+                ingredients: ingredients.split(',').map(s => s.trim()).filter(s => s.length > 0), 
+                price: numericPrice,
+                preparationTime: numericTime,
+                category,
+                imageUrl: uploadedImageUrl,
+            };
+
+            const response = await api.post("/meals", payload);
+
+            Alert.alert("Succès 🎉", `Le plat "${response.data.data.meal.name}" a été ajouté à votre menu.`);
+            
+            // Réinitialisation du formulaire
+            setName("");
+            setDescription("");
+            setIngredients("");
+            setPrice("");
+            setPreparationTime("");
+            setCategory("plat_principal");
+            setImage(null);
+
+        } catch (error: any) {
+            console.error("❌ Erreur de création du plat:", error.response?.data || error.message);
             Alert.alert(
-                "✅ Succès !",
-                `"${dishName}" a été ajouté avec succès et est maintenant ${isAvailable ? 'visible aux clients.' : 'en brouillon.'}`,
-                [{ 
-                    text: "OK", 
-                    onPress: () => {
-                        setDishName("");
-                        setDescription("");
-                        setPrice("");
-                        setIngredients("");
-                        setCategory(CATEGORIES[0]);
-                        setIsAvailable(true);
-                        setImageUploaded(false);
-                    }
-                }]
+                "Échec de l'ajout", 
+                error.response?.data?.message || "Une erreur est survenue lors de la création du plat."
             );
-        }, 800);
+        } finally {
+            setLoading(false);
+        }
     };
 
-    return (
-        <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
-            {/* HEADER */}
-            <View style={styles.header}>
-                <View>
-                    <Text style={styles.headerSmall}>Créer un Nouveau</Text>
-                    <Text style={styles.screenTitle}>Plat Délicieux 🍽️</Text>
-                </View>
-            </View>
+    // --- RENDU UI/UX ---
+    // Dans AddMealScreen.tsx
 
-            {/* SECTION DÉTAILS */}
-            <View style={styles.sectionContainer}>
-                <Text style={styles.sectionTitle}>📝 Détails du Plat</Text>
-                <View style={styles.card}>
-                    <InputField
-                        label="Nom du Plat"
-                        placeholder="Ex: Tarte aux légumes"
-                        value={dishName}
-                        onChangeText={setDishName}
-                        iconName="restaurant-outline"
-                        required
-                    />
-                    
-                    <View style={styles.divider} />
-                    
-                    <InputField
-                        label="Description"
-                        placeholder="Décrivez ce qui rend ce plat unique..."
-                        value={description}
-                        onChangeText={setDescription}
-                        multiline
-                        iconName="document-text-outline"
-                    />
-                </View>
-            </View>
+return (
+  <ScrollView 
+      style={styles.container}
+      contentContainerStyle={styles.scrollContent}
+      keyboardShouldPersistTaps="handled"
+  >
+      <Text style={styles.screenTitle}>Ajouter un Nouveau Plat ✨</Text>
 
-            {/* SECTION INGRÉDIENTS */}
-            <View style={styles.sectionContainer}>
-                <Text style={styles.sectionTitle}>🥬 Ingrédients & Composition</Text>
-                <View style={styles.card}>
-                    <InputField
-                        label="Ingrédients Clés"
-                        placeholder="Ex: Blé, œufs, tomates, basilic..."
-                        value={ingredients}
-                        onChangeText={setIngredients}
-                        iconName="leaf-outline"
-                    />
-                </View>
-            </View>
+      {/* Section Image */}
+      <View style={styles.sectionContainer}>
+          <Text style={styles.label}>Photo du Plat</Text>
+          
+          {image ? (
+              <View style={styles.imagePreviewContainer}>
+                  <Image source={{ uri: image }} style={styles.imagePreview} />
+                  <TouchableOpacity style={styles.removeImageButton} onPress={() => setImage(null)}>
+                      <Ionicons name="close-circle" size={24} color={COLORS.card} />
+                  </TouchableOpacity>
+              </View>
+          ) : (
+              <View style={styles.imagePlaceholder}>
+                  <Ionicons name="camera-outline" size={30} color={COLORS.subtitle} />
+                  <Text style={styles.placeholderText}>Ajouter une belle photo pour attirer les clients</Text>
+              </View>
+          )}
+          
+          <TouchableOpacity
+              onPress={pickImage}
+              style={[styles.actionButton, { backgroundColor: COLORS.secondary }]}
+          >
+              <Feather name="image" size={18} color={COLORS.card} />
+              <Text style={styles.actionButtonText}>Choisir une image</Text>
+          </TouchableOpacity>
+      </View>
+      
+      <View style={styles.divider} />
 
-            {/* SECTION PRIX & CATÉGORIE */}
-            <View style={styles.sectionContainer}>
-                <Text style={styles.sectionTitle}>💰 Prix & Catégorisation</Text>
-                <View style={styles.card}>
-                    <InputField
-                        label="Prix (FCFA)"
-                        placeholder="Ex: 5500"
-                        value={price}
-                        onChangeText={text => setPrice(text.replace(/[^0-9,.]/g, ''))}
-                        keyboardType="numeric"
-                        iconName="cash-outline"
-                        required
-                    />
-                    
-                    <View style={styles.divider} />
-                    
-                    <TouchableOpacity 
-                        style={styles.categorySelector} 
-                        onPress={handleCategoryChange}
-                        activeOpacity={0.7}
-                    >
-                        <View style={styles.categoryLeft}>
-                            <View style={[styles.categoryIconBox, { backgroundColor: COLORS.secondary + '20' }]}>
-                                <Ionicons name="bookmark-outline" size={18} color={COLORS.secondary} />
-                            </View>
-                            <View>
-                                <Text style={styles.inputLabel}>Catégorie</Text>
-                                <Text style={styles.categoryValue}>{category}</Text>
-                            </View>
-                        </View>
-                        <Ionicons name="chevron-forward" size={20} color={COLORS.placeholderText} />
-                    </TouchableOpacity>
-                </View>
-            </View>
+      {/* Section Détails */}
+      <View style={styles.sectionContainer}>
+          
+          {/* Nom */}
+          <Text style={styles.label}>Nom du plat <Text style={{ color: COLORS.error }}>*</Text></Text>
+          <TextInput
+              placeholder="Ex : Poulet Yassa Traditionnel"
+              value={name}
+              onChangeText={setName}
+              style={styles.input}
+          />
 
-            {/* SECTION MÉDIA & STATUT */}
-            <View style={styles.sectionContainer}>
-                <Text style={styles.sectionTitle}>📷 Média & Disponibilité</Text>
-                <View style={styles.card}>
-                    {/* Image Upload */}
-                    <TouchableOpacity 
-                        style={[
-                            styles.imageUploadButton,
-                            imageUploaded && styles.imageUploadedState
-                        ]}
-                        onPress={handleImageUpload}
-                        activeOpacity={0.8}
-                    >
-                        <View style={[
-                            styles.uploadIconContainer,
-                            imageUploaded && { backgroundColor: COLORS.success + '20' }
-                        ]}>
-                            <Feather 
-                                name={imageUploaded ? "check-circle" : "upload-cloud"} 
-                                size={28} 
-                                color={imageUploaded ? COLORS.success : COLORS.primary} 
-                            />
-                        </View>
-                        <View style={{ flex: 1 }}>
-                            <Text style={styles.imageUploadText}>
-                                {imageUploaded ? "Photo Ajoutée ✓" : "Ajouter une Photo"}
-                            </Text>
-                            <Text style={styles.imageUploadSubtext}>
-                                {imageUploaded ? "Appuyez pour changer" : "JPEG, PNG - Max 5MB"}
-                            </Text>
-                        </View>
-                    </TouchableOpacity>
+          {/* Catégorie */}
+          <Text style={styles.label}>Catégorie <Text style={{ color: COLORS.error }}>*</Text></Text>
+          <View style={styles.pickerContainer}>
+              <Picker 
+                  selectedValue={category} 
+                  onValueChange={(v) => setCategory(v)}
+                  style={styles.picker}
+                  itemStyle={styles.pickerItem}
+              >
+                  <Picker.Item label="Plat principal" value="plat_principal" />
+                  <Picker.Item label="Entrée" value="entrée" />
+                  <Picker.Item label="Accompagnement" value="accompagnement" />
+                  <Picker.Item label="Dessert" value="dessert" />
+                  <Picker.Item label="Boisson" value="boisson" />
+                  <Picker.Item label="Autre" value="autre" />
+              </Picker>
+          </View>
 
-                    <View style={styles.divider} />
+          {/* Description */}
+          <Text style={styles.label}>Description</Text>
+          <TextInput
+              placeholder="Décrivez brièvement le goût et l'expérience du repas."
+              value={description}
+              onChangeText={setDescription}
+              multiline
+              style={[styles.input, styles.textArea]}
+          />
 
-                    {/* Availability Toggle */}
-                    <View style={styles.availabilityContainer}>
-                        <View style={styles.availabilityLeft}>
-                            <View style={[styles.statusIconBox, { backgroundColor: isAvailable ? COLORS.success + '20' : COLORS.danger + '20' }]}>
-                                <Ionicons 
-                                    name={isAvailable ? "eye-outline" : "eye-off-outline"} 
-                                    size={18} 
-                                    color={isAvailable ? COLORS.success : COLORS.danger} 
-                                />
-                            </View>
-                            <View>
-                                <Text style={styles.availabilityLabel}>Visibilité</Text>
-                                <Text style={styles.availabilitySubLabel}>
-                                    {isAvailable ? "Visible par les clients" : "Masqué (brouillon)"}
-                                </Text>
-                            </View>
-                        </View>
-                        <Switch
-                            onValueChange={setIsAvailable}
-                            value={isAvailable}
-                            trackColor={{ false: COLORS.border, true: COLORS.success + '40' }}
-                            thumbColor={isAvailable ? COLORS.success : COLORS.danger}
-                        />
-                    </View>
-                </View>
-            </View>
+          {/* Ingrédients */}
+          <Text style={styles.label}>Ingrédients (Séparés par une virgule)</Text>
+          <TextInput
+              placeholder="Ex : riz, oignons, poulet, moutarde, citron"
+              value={ingredients}
+              onChangeText={setIngredients}
+              style={styles.input}
+          />
 
-            {/* BOUTON SAVE */}
-            <TouchableOpacity 
-                style={[styles.saveButton, loading && { opacity: 0.7 }]} 
-                onPress={handleSaveDish}
-                disabled={loading}
-                activeOpacity={0.85}
-            >
-                {loading ? (
-                    <>
-                        <Text style={styles.saveButtonText}>⏳ Enregistrement...</Text>
-                    </>
-                ) : (
-                    <>
-                        <Ionicons name="checkmark-circle-outline" size={20} color={COLORS.card} style={{ marginRight: 8 }} />
-                        <Text style={styles.saveButtonText}>Enregistrer le Plat</Text>
-                    </>
-                )}
-            </TouchableOpacity>
-        </ScrollView>
-    );
+      </View>
+
+      <View style={styles.divider} />
+
+      {/* Section Tarification/Temps */}
+      <View style={styles.sectionContainer}>
+          <Text style={styles.sectionHeader}>Tarification et Logistique</Text>
+          <View style={styles.row}>
+              
+              {/* Prix */}
+              <View style={styles.halfInput}>
+                  <Text style={styles.label}>Prix (FCFA) <Text style={{ color: COLORS.error }}>*</Text></Text>
+                  <TextInput
+                      placeholder="1500"
+                      keyboardType="decimal-pad"
+                      value={price}
+                      onChangeText={setPrice}
+                      style={styles.input}
+                  />
+              </View>
+
+              {/* Temps de préparation */}
+              <View style={styles.halfInput}>
+                  <Text style={styles.label}>Temps de prép. (min) <Text style={{ color: COLORS.error }}>*</Text></Text>
+                  <TextInput
+                      placeholder="30"
+                      keyboardType="numeric"
+                      value={preparationTime}
+                      onChangeText={setPreparationTime}
+                      style={styles.input}
+                  />
+              </View>
+          </View>
+      </View>
+
+      {/* BTN SUBMIT */}
+      <TouchableOpacity
+          onPress={handleSubmit}
+          disabled={loading}
+          style={[styles.submitButton, loading && { opacity: 0.6 }]}
+      >
+          {loading ? (
+              <ActivityIndicator color={COLORS.card} />
+          ) : (
+              <Text style={styles.submitButtonText}>Ajouter le Plat au Menu</Text>
+          )}
+      </TouchableOpacity>
+
+      <View style={{ height: 50 }} />
+  </ScrollView>
+);
 }
-
 // ===============================================
-// STYLES
+// STYLES DÉTAILLÉS (Meilleure UI/UX)
 // ===============================================
 
 const styles = StyleSheet.create({
     container: { 
         flex: 1, 
         backgroundColor: COLORS.background,
-        paddingTop: Platform.OS === "android" ? 20 : 0,
     },
     scrollContent: { 
-        paddingBottom: 40,
+        padding: 20, 
     },
-    header: { 
-        paddingHorizontal: 20, 
-        paddingVertical: 18,
-        backgroundColor: COLORS.card,
-        borderBottomWidth: 1,
-        borderBottomColor: COLORS.border,
-        marginBottom: 12,
+    screenTitle: {
+        fontSize: 24,
+        fontWeight: "800",
+        color: COLORS.text,
+        marginBottom: 25,
+        textAlign: 'center',
     },
-    headerSmall: {
-        fontSize: 14,
-        color: COLORS.subtitle,
-        fontWeight: '500',
-        marginBottom: 2,
+    sectionContainer: {
+        marginBottom: 20,
     },
-    screenTitle: { 
-        fontSize: 26, 
-        fontWeight: '800', 
-        color: COLORS.text 
-    },
-    sectionContainer: { 
-        marginHorizontal: 20, 
-        marginTop: 20,
-    },
-    sectionTitle: { 
-        fontSize: 15, 
-        fontWeight: '700', 
-        color: COLORS.text, 
-        marginBottom: 12,
-    },
-    card: { 
-        backgroundColor: COLORS.card, 
-        borderRadius: 14, 
-        paddingHorizontal: 16,
-        paddingVertical: 0,
-        shadowColor: "#000", 
-        shadowOffset: { width: 0, height: 2 }, 
-        shadowOpacity: 0.05, 
-        shadowRadius: 4, 
-        elevation: 2, 
-        borderWidth: 1, 
-        borderColor: COLORS.border 
-    },
-    inputGroup: { 
-        paddingVertical: 14,
-    },
-    labelContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginBottom: 8,
-    },
-    inputLabel: { 
-        fontSize: 13, 
-        color: COLORS.subtitle, 
-        fontWeight: "600",
-    },
-    requiredAsterisk: {
-        fontSize: 14,
-        color: COLORS.danger,
-        marginLeft: 4,
+    sectionHeader: {
+        fontSize: 18,
         fontWeight: '700',
+        color: COLORS.secondary,
+        marginBottom: 10,
     },
-    inputContainer: { 
-        flexDirection: 'row', 
-        alignItems: 'center', 
-        backgroundColor: COLORS.background, 
+    divider: {
+        height: 1,
+        backgroundColor: COLORS.border,
+        marginVertical: 15,
+    },
+    label: {
+        fontWeight: "600",
+        color: COLORS.text,
+        marginBottom: 6,
+        fontSize: 14,
+    },
+    input: {
+        borderWidth: 1,
+        borderColor: COLORS.border,
+        borderRadius: 10,
+        padding: Platform.OS === 'ios' ? 14 : 10,
+        marginBottom: 15,
+        backgroundColor: COLORS.card,
+        fontSize: 16,
+    },
+    textArea: {
+        height: 100,
+        textAlignVertical: 'top', 
+        paddingTop: 14,
+    },
+    row: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        marginBottom: 15,
+    },
+    halfInput: {
+        width: '48%',
+    },
+    pickerContainer: {
+        borderWidth: 1,
+        borderColor: COLORS.border,
+        borderRadius: 10,
+        marginBottom: 15,
+        backgroundColor: COLORS.card,
+        // Correction pour Android
+        overflow: Platform.OS === 'android' ? 'hidden' : 'visible', 
+    },
+    picker: {
+        height: 50,
+        width: '100%',
+    },
+    pickerItem: { // Amélioration pour iOS
+        fontSize: 16,
+    },
+    
+    // --- Styles d'Image ---
+    imagePlaceholder: {
+        backgroundColor: COLORS.border + '30',
+        height: 180,
+        borderRadius: 10,
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 2,
+        borderColor: COLORS.border,
+        borderStyle: 'dashed',
+        marginBottom: 15,
+    },
+    placeholderText: {
+        color: COLORS.subtitle,
+        marginTop: 5,
+        fontSize: 14,
+        textAlign: 'center',
+        paddingHorizontal: 20,
+    },
+    imagePreviewContainer: {
+        marginBottom: 15,
+    },
+    imagePreview: { 
+        width: "100%", 
+        height: 200, 
         borderRadius: 10, 
-        paddingHorizontal: 12, 
-        borderWidth: 1, 
+        borderWidth: 1,
         borderColor: COLORS.border,
     },
-    input: { 
-        flex: 1, 
-        fontSize: 15, 
-        color: COLORS.text, 
-        paddingVertical: Platform.OS === 'ios' ? 12 : 10,
-        fontWeight: '500',
+    removeImageButton: {
+        position: 'absolute',
+        top: 10,
+        right: 10,
+        backgroundColor: COLORS.error,
+        borderRadius: 15,
+        padding: 2,
+        zIndex: 10,
     },
-    multilineInput: { 
-        height: 100, 
-        textAlignVertical: 'top', 
-        paddingVertical: 12 
-    },
-    divider: { 
-        height: 1, 
-        backgroundColor: COLORS.border, 
-        marginHorizontal: -16,
-    },
-    categorySelector: {
+    
+    // --- Styles du Bouton d'Action ---
+    actionButton: {
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'space-between',
-        paddingVertical: 14,
-    },
-    categoryLeft: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        flex: 1,
-    },
-    categoryIconBox: {
-        width: 40,
-        height: 40,
+        justifyContent: 'center',
+        padding: 12,
         borderRadius: 10,
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginRight: 12,
     },
-    categoryValue: { 
-        fontSize: 15, 
-        color: COLORS.text, 
-        fontWeight: '600',
-        marginTop: 2,
+    actionButtonText: {
+        color: COLORS.card,
+        fontWeight: 'bold',
+        marginLeft: 8,
+        fontSize: 16,
     },
-    imageUploadButton: { 
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingVertical: 16,
+
+    // --- Styles du Bouton de Soumission ---
+    submitButton: {
+        backgroundColor: COLORS.success,
+        padding: 16,
         borderRadius: 10,
-        marginVertical: 8,
+        alignItems: "center",
+        marginTop: 20,
+        shadowColor: COLORS.success,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 5,
+        elevation: 5,
     },
-    imageUploadedState: {
-        backgroundColor: COLORS.success + '08',
-    },
-    uploadIconContainer: {
-        width: 48,
-        height: 48,
-        borderRadius: 12,
-        justifyContent: 'center',
-        alignItems: 'center',
-        backgroundColor: COLORS.primary + '15',
-        marginRight: 12,
-    },
-    imageUploadText: { 
-        fontSize: 15, 
-        fontWeight: '700', 
-        color: COLORS.text 
-    },
-    imageUploadSubtext: {
-        fontSize: 12,
-        color: COLORS.subtitle,
-        marginTop: 3,
-    },
-    availabilityContainer: { 
-        flexDirection: 'row', 
-        justifyContent: 'space-between', 
-        alignItems: 'center', 
-        paddingVertical: 14,
-    },
-    availabilityLeft: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        flex: 1,
-    },
-    statusIconBox: {
-        width: 40,
-        height: 40,
-        borderRadius: 10,
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginRight: 12,
-    },
-    availabilityLabel: { 
-        fontSize: 15, 
-        fontWeight: '600', 
-        color: COLORS.text 
-    },
-    availabilitySubLabel: { 
-        fontSize: 12, 
-        color: COLORS.subtitle, 
-        marginTop: 2,
-    },
-    saveButton: { 
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: COLORS.primary, 
-        paddingVertical: 16, 
-        borderRadius: 14, 
-        marginHorizontal: 20, 
-        marginTop: 28,
-        marginBottom: 20,
-        shadowColor: COLORS.primary, 
-        shadowOffset: { width: 0, height: 4 }, 
-        shadowOpacity: 0.3, 
-        shadowRadius: 5, 
-        elevation: 5 
-    },
-    saveButtonText: { 
-        color: COLORS.card, 
-        fontSize: 16, 
-        fontWeight: '700'
+    submitButtonText: {
+        color: COLORS.card,
+        fontWeight: "800",
+        fontSize: 18,
     },
 });

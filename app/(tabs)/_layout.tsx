@@ -59,7 +59,7 @@ export default function TabLayout() {
       />
 
       {/* 2. PANIER */}
-      <Tabs.Screen
+       <Tabs.Screen
         name="explore"
         options={{
           title: 'Panier',
@@ -67,7 +67,8 @@ export default function TabLayout() {
             <Ionicons size={24} name={focused ? "cart" : "cart-outline"} color={color} />
           ),
         }}
-      />
+      /> 
+
 
       {/* 3. COMMANDES */}
       <Tabs.Screen

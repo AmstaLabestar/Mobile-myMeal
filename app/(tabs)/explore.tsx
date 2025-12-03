@@ -1,405 +1,270 @@
-import { Ionicons } from "@expo/vector-icons";
+import { Feather, Ionicons } from "@expo/vector-icons";
 import React, { useState } from "react";
 import {
   Alert,
+  FlatList,
+  Image,
+  Modal,
   Platform,
-  ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
+import { useCartOrder } from "../../src/context/CartOrderContext";
 
-// === COULEURS MODERNES (Reprise de votre palette) ===
 const COLORS = {
-    primary: "#FF7043", // Orange Chaud
-    secondary: "#1E88E5", // Bleu
-    background: "#F7F8F9", 
-    card: "#FFFFFF",
-    text: "#212121", 
-    subtitle: "#757575", 
-    placeholderText: "#A0A0A0",
-    border: "#E0E0E0",
-    danger: "#EF5350", 
-    success: "#4CAF50",
+  primary: "#FF7043",
+  secondary: "#1E88E5",
+  background: "#F7F8F9",
+  card: "#FFFFFF",
+  text: "#212121",
+  subtitle: "#757575",
+  accentGreen: "#4CAF50",
+  placeholderText: "#A0A0A0",
+  border: "#E0E0E0",
+  danger: "#EF5350",
 };
-
-interface CartItem {
-    id: string;
-    name: string;
-    price: number;
-    quantity: number;
-    cooker: string;
-}
-
-// === DONNÉES MOCK du Panier (À remplacer par votre état global) ===
-const initialCartItems: CartItem[] = [
-    { id: 'D001', name: 'Poulet Yassa Maison', price: 12.50, quantity: 2, cooker: 'Cuisine d\'Aïcha' },
-    { id: 'D002', name: 'Salade César Gourmande', price: 9.90, quantity: 1, cooker: 'Traiteur Paul' },
-    { id: 'D003', name: 'Jus de Bissap (1L)', price: 3.00, quantity: 3, cooker: 'Cuisine d\'Aïcha' },
-];
-
-
-// ===============================================
-// 🛍️ COMPOSANT : Article du Panier
-// ===============================================
-
-interface CartItemRowProps {
-    item: CartItem;
-    onQuantityChange: (id: string, newQuantity: number) => void;
-    onRemove: (id: string) => void;
-}
-
-const CartItemRow: React.FC<CartItemRowProps> = ({ item, onQuantityChange, onRemove }) => {
-    
-    // Total de la ligne
-    const total = (item.price * item.quantity).toFixed(2);
-
-    return (
-        <View style={staticStyles.itemRow}>
-            {/* Nom et Cuisinier */}
-            <View style={staticStyles.itemInfo}>
-                <Text style={staticStyles.itemName} numberOfLines={1}>{item.name}</Text>
-                <Text style={staticStyles.itemCooker}>{item.cooker}</Text>
-            </View>
-
-            {/* Prix Unitaire */}
-            <View style={staticStyles.itemPriceContainer}>
-                <Text style={staticStyles.itemPriceUnit}>${item.price.toFixed(2)}</Text>
-            </View>
-
-            {/* Contrôle de Quantité */}
-            <View style={staticStyles.quantityControl}>
-                <TouchableOpacity 
-                    onPress={() => item.quantity > 1 ? onQuantityChange(item.id, item.quantity - 1) : onRemove(item.id)}
-                    style={staticStyles.quantityButton}
-                >
-                    <Ionicons name={item.quantity > 1 ? "remove-outline" : "trash-outline"} size={20} color={item.quantity > 1 ? COLORS.text : COLORS.danger} />
-                </TouchableOpacity>
-
-                <Text style={staticStyles.quantityText}>{item.quantity}</Text>
-
-                <TouchableOpacity 
-                    onPress={() => onQuantityChange(item.id, item.quantity + 1)}
-                    style={staticStyles.quantityButton}
-                >
-                    <Ionicons name="add-outline" size={20} color={COLORS.text} />
-                </TouchableOpacity>
-            </View>
-            
-            {/* Total de la Ligne */}
-            <Text style={staticStyles.itemTotalText}>${total}</Text>
-        </View>
-    );
-};
-
-// ===============================================
-// 🛒 COMPOSANT PRINCIPAL : CartScreen
-// ===============================================
 
 export default function CartScreen() {
-    const [cartItems, setCartItems] = useState(initialCartItems);
-    
-    // Calculs de totaux
-    const subtotal = cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
-    const deliveryFee = subtotal > 0 ? 5.00 : 0.00; // Frais de livraison fixe ou conditionnel
-    const total = subtotal + deliveryFee;
+  const { cartItems, removeFromCart, updateQuantity, clearCart, cartTotal, createOrderFromCart } = useCartOrder();
+  
+  const [modalVisible, setModalVisible] = useState(false);
+  const [deliveryAddress, setDeliveryAddress] = useState("");
+  const [deliveryOption, setDeliveryOption] = useState<"livraison" | "retrait">("livraison");
 
-    // Fonction de modification de quantité
-    const handleQuantityChange = (id: string, newQuantity: number) => {
-        setCartItems(prevItems => 
-            prevItems.map(item => 
-                item.id === id ? { ...item, quantity: newQuantity } : item
-            )
-        );
-    };
-
-    // Fonction de suppression d'article
-    const handleRemoveItem = (id: string) => {
-        Alert.alert(
-            "Confirmer la suppression",
-            "Êtes-vous sûr de vouloir retirer cet article du panier ?",
-            [
-                { text: "Annuler", style: "cancel" },
-                { 
-                    text: "Supprimer", 
-                    style: "destructive",
-                    onPress: () => setCartItems(prevItems => prevItems.filter(item => item.id !== id)),
-                },
-            ]
-        );
-    };
-
-    const handleCheckout = () => {
-        if (cartItems.length === 0) {
-            Alert.alert("Panier vide", "Ajoutez des plats avant de commander !");
-            return;
-        }
-        // Logique de navigation vers l'écran de paiement/livraison
-        Alert.alert("Paiement", `Passer à la commande de ${total.toFixed(2)} $`);
-        // router.push('/checkout');
-    };
-
-    return (
-        <View style={staticStyles.fullContainer}>
-            <ScrollView 
-                style={staticStyles.container} 
-                contentContainerStyle={staticStyles.scrollContent}
-            >
-                <Text style={staticStyles.screenTitle}>Mon Panier ({cartItems.length})</Text>
-
-                {/* 1. Liste des Articles */}
-                <View style={staticStyles.sectionContainer}>
-                    <Text style={staticStyles.sectionTitle}>Articles Commandés</Text>
-                    <View style={staticStyles.card}>
-                        {cartItems.length > 0 ? (
-                            cartItems.map((item, index) => (
-                                <React.Fragment key={item.id}>
-                                    <CartItemRow 
-                                        item={item} 
-                                        onQuantityChange={handleQuantityChange}
-                                        onRemove={handleRemoveItem}
-                                    />
-                                    {index < cartItems.length - 1 && <View style={staticStyles.divider} />}
-                                </React.Fragment>
-                            ))
-                        ) : (
-                            <Text style={staticStyles.emptyCartText}>Votre panier est vide. 😭</Text>
-                        )}
-                    </View>
-                </View>
-
-                {/* 2. Récapitulatif de la Commande */}
-                <View style={staticStyles.sectionContainer}>
-                    <Text style={staticStyles.sectionTitle}>Récapitulatif</Text>
-                    <View style={staticStyles.card}>
-                        <View style={staticStyles.summaryRow}>
-                            <Text style={staticStyles.summaryLabel}>Sous-total des articles</Text>
-                            <Text style={staticStyles.summaryValue}>${subtotal.toFixed(2)}</Text>
-                        </View>
-                        
-                        <View style={staticStyles.divider} />
-                        
-                        <View style={staticStyles.summaryRow}>
-                            <Text style={staticStyles.summaryLabel}>Frais de livraison</Text>
-                            <Text style={[staticStyles.summaryValue, deliveryFee > 0 && { color: COLORS.secondary }]}>
-                                {deliveryFee > 0 ? `$${deliveryFee.toFixed(2)}` : 'GRATUIT'}
-                            </Text>
-                        </View>
-
-                        <View style={[staticStyles.divider, { marginVertical: 10 }]} />
-                        
-                        {/* Total Final */}
-                        <View style={staticStyles.totalRow}>
-                            <Text style={staticStyles.totalLabel}>Total à Payer</Text>
-                            <Text style={staticStyles.totalValue}>${total.toFixed(2)}</Text>
-                        </View>
-                    </View>
-                </View>
-                
-                {/* Espace pour ne pas que le contenu soit caché par le bouton fixe */}
-                <View style={{ height: 120 }} /> 
-            </ScrollView>
-
-            {/* BOUTON FLOTTANT DE PAIEMENT */}
-            <View style={staticStyles.checkoutContainer}>
-                <TouchableOpacity 
-                    style={staticStyles.checkoutButton}
-                    onPress={handleCheckout}
-                    disabled={cartItems.length === 0}
-                >
-                    <Ionicons name="cart-outline" size={20} color={COLORS.card} style={{ marginRight: 10 }} />
-                    <Text style={staticStyles.checkoutButtonText}>
-                        Payer | ${total.toFixed(2)}
-                    </Text>
-                </TouchableOpacity>
-            </View>
-        </View>
+  const handleRemoveItem = (itemId: string) => {
+    Alert.alert(
+      "Supprimer l'article",
+      "Voulez-vous retirer cet article du panier ?",
+      [
+        { text: "Annuler", style: "cancel" },
+        { text: "Supprimer", onPress: () => removeFromCart(itemId), style: "destructive" },
+      ]
     );
+  };
+
+  const handleClearCart = () => {
+    Alert.alert(
+      "Vider le panier",
+      "Voulez-vous supprimer tous les articles ?",
+      [
+        { text: "Annuler", style: "cancel" },
+        { text: "Vider", onPress: () => clearCart(), style: "destructive" },
+      ]
+    );
+  };
+
+  const handleCreateOrder = () => {
+    if (cartItems.length === 0) {
+      Alert.alert("Panier vide", "Ajoutez des plats avant de commander.");
+      return;
+    }
+    setModalVisible(true);
+  };
+
+  const handleConfirmOrder = async () => {
+    if (deliveryOption === "livraison" && deliveryAddress.trim().length < 5) {
+      Alert.alert("Adresse invalide", "Veuillez entrer une adresse de livraison valide.");
+      return;
+    }
+try {
+    await createOrderFromCart(deliveryAddress, deliveryOption);
+    setModalVisible(false);
+    setDeliveryAddress("");
+    
+    // Alert.alert(
+    //   "Commande créée ! 🎉",
+    //   "Votre commande a été envoyée avec succès. Consultez l'onglet Commandes pour suivre son statut.",
+    //   [{ text: "OK" }]
+    // );
+
+ } catch (error) {
+  console.error("Erreur lors de la création de la commande :", error);
+      Alert.alert(
+        "Erreur",
+        "Une erreur est survenue lors de la création de la commande. Veuillez réessayer plus tard."
+      );
+    }
+  };
+
+  const renderCartItem = ({ item }: { item: any }) => (
+    <View style={styles.cartItem}>
+      <View style={styles.itemImageContainer}>
+        {item.imageUrl ? (
+          <Image source={{ uri: item.imageUrl }} style={styles.itemImage} />
+        ) : (
+          <View style={[styles.itemImage, styles.placeholderImage]}>
+            <Feather name="image" size={30} color={COLORS.placeholderText} />
+          </View>
+        )}
+      </View>
+
+      <View style={styles.itemDetails}>
+        <Text style={styles.itemName} numberOfLines={1}>{item.name}</Text>
+        <Text style={styles.itemCooker}>{item.cooker}</Text>
+        <Text style={styles.itemPrice}>{item.price.toLocaleString()} FCFA</Text>
+      </View>
+
+      <View style={styles.itemActions}>
+        <View style={styles.quantityControls}>
+          <TouchableOpacity onPress={() => updateQuantity(item.id, item.quantity - 1)}>
+            <Feather name="minus-circle" size={24} color={COLORS.subtitle} />
+          </TouchableOpacity>
+          <Text style={styles.quantityText}>{item.quantity}</Text>
+          <TouchableOpacity onPress={() => updateQuantity(item.id, item.quantity + 1)}>
+            <Feather name="plus-circle" size={24} color={COLORS.primary} />
+          </TouchableOpacity>
+        </View>
+        
+        <TouchableOpacity onPress={() => handleRemoveItem(item.id)} style={styles.deleteButton}>
+          <Feather name="trash-2" size={20} color={COLORS.danger} />
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+
+  return (
+    <View style={styles.container}>
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>Mon Panier 🛒</Text>
+        {cartItems.length > 0 && (
+          <TouchableOpacity onPress={handleClearCart}>
+            <Text style={styles.clearButton}>Vider</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {cartItems.length === 0 ? (
+        <View style={styles.emptyContainer}>
+          <Ionicons name="cart-outline" size={80} color={COLORS.placeholderText} />
+          <Text style={styles.emptyText}>Votre panier est vide</Text>
+          <Text style={styles.emptySubtext}>Ajoutez des plats pour commencer !</Text>
+        </View>
+      ) : (
+        <>
+          <FlatList
+            data={cartItems}
+            keyExtractor={(item) => item.id}
+            renderItem={renderCartItem}
+            contentContainerStyle={styles.listContent}
+          />
+
+          <View style={styles.footer}>
+            <View style={styles.totalContainer}>
+              <Text style={styles.totalLabel}>Total</Text>
+              <Text style={styles.totalAmount}>{cartTotal.toLocaleString()} FCFA</Text>
+            </View>
+            <TouchableOpacity style={styles.orderButton} onPress={handleCreateOrder}>
+              <Text style={styles.orderButtonText}>Commander</Text>
+              <Feather name="arrow-right" size={20} color="#FFF" />
+            </TouchableOpacity>
+          </View>
+        </>
+      )}
+
+      {/* MODAL DE CONFIRMATION */}
+      <Modal visible={modalVisible} transparent animationType="slide" onRequestClose={() => setModalVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Finaliser la commande</Text>
+              <TouchableOpacity onPress={() => setModalVisible(false)}>
+                <Feather name="x" size={24} color={COLORS.subtitle} />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.modalLabel}>Mode de réception</Text>
+            <View style={styles.deliveryOptions}>
+              <TouchableOpacity
+                style={[styles.optionButton, deliveryOption === "livraison" && styles.optionButtonActive]}
+                onPress={() => setDeliveryOption("livraison")}
+              >
+                <Feather name="truck" size={20} color={deliveryOption === "livraison" ? COLORS.card : COLORS.subtitle} />
+                <Text style={[styles.optionText, deliveryOption === "livraison" && styles.optionTextActive]}>
+                  Livraison
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.optionButton, deliveryOption === "retrait" && styles.optionButtonActive]}
+                onPress={() => setDeliveryOption("retrait")}
+              >
+                <Feather name="shopping-bag" size={20} color={deliveryOption === "retrait" ? COLORS.card : COLORS.subtitle} />
+                <Text style={[styles.optionText, deliveryOption === "retrait" && styles.optionTextActive]}>
+                  Retrait
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {deliveryOption === "livraison" && (
+              <>
+                <Text style={styles.modalLabel}>Adresse de livraison</Text>
+                <TextInput
+                  style={styles.addressInput}
+                  placeholder="Entrez votre adresse complète..."
+                  placeholderTextColor={COLORS.placeholderText}
+                  value={deliveryAddress}
+                  onChangeText={setDeliveryAddress}
+                  multiline
+                />
+              </>
+            )}
+
+            <View style={styles.modalFooter}>
+              <Text style={styles.modalTotal}>Total: {cartTotal.toLocaleString()} FCFA</Text>
+              <TouchableOpacity style={styles.confirmButton} onPress={handleConfirmOrder}>
+                <Text style={styles.confirmButtonText}>Confirmer la commande</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </View>
+  );
 }
 
-// ===============================================
-// DÉFINITION DES STYLES STATIQUES
-// ===============================================
-
-const staticStyles = StyleSheet.create({
-    fullContainer: {
-        flex: 1,
-        backgroundColor: COLORS.background,
-    },
-    container: {
-        flex: 1,
-    },
-    scrollContent: {
-        paddingBottom: 20,
-        paddingTop: Platform.OS === "android" ? 20 : 0,
-    },
-    screenTitle: {
-        fontSize: 28,
-        fontWeight: '800',
-        color: COLORS.text,
-        paddingHorizontal: 20,
-        paddingVertical: 10,
-    },
-    sectionContainer: {
-        marginHorizontal: 20,
-        marginTop: 20,
-    },
-    sectionTitle: {
-        fontSize: 16,
-        fontWeight: '700',
-        color: COLORS.subtitle,
-        marginBottom: 10,
-    },
-    card: {
-        backgroundColor: COLORS.card,
-        borderRadius: 12,
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.05,
-        shadowRadius: 4,
-        elevation: 2,
-        borderWidth: 1,
-        borderColor: COLORS.border,
-        overflow: 'hidden', // Pour les bordures des dividers
-    },
-    divider: {
-        height: 1,
-        backgroundColor: COLORS.border,
-    },
-    // --- Styles Article du Panier (CartItemRow) ---
-    itemRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingVertical: 15,
-        paddingHorizontal: 15,
-        justifyContent: 'space-between',
-    },
-    itemInfo: {
-        flex: 2,
-        marginRight: 10,
-    },
-    itemName: {
-        fontSize: 16,
-        fontWeight: '700',
-        color: COLORS.text,
-    },
-    itemCooker: {
-        fontSize: 12,
-        color: COLORS.subtitle,
-    },
-    itemPriceContainer: {
-        flex: 1,
-        alignItems: 'flex-start',
-    },
-    itemPriceUnit: {
-        fontSize: 14,
-        color: COLORS.subtitle,
-    },
-    quantityControl: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: COLORS.background,
-        borderRadius: 20,
-        paddingVertical: 4,
-        paddingHorizontal: 5,
-        borderWidth: 1,
-        borderColor: COLORS.border,
-    },
-    quantityButton: {
-        padding: 4,
-    },
-    quantityText: {
-        fontSize: 16,
-        fontWeight: '600',
-        color: COLORS.text,
-        marginHorizontal: 8,
-    },
-    itemTotalText: {
-        flex: 1.2,
-        fontSize: 16,
-        fontWeight: '700',
-        color: COLORS.primary,
-        textAlign: 'right',
-    },
-    emptyCartText: {
-        padding: 20,
-        textAlign: 'center',
-        color: COLORS.placeholderText,
-        fontStyle: 'italic',
-    },
-    // --- Styles Récapitulatif ---
-    summaryRow: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        paddingVertical: 10,
-        paddingHorizontal: 15,
-    },
-    summaryLabel: {
-        fontSize: 15,
-        color: COLORS.subtitle,
-    },
-    summaryValue: {
-        fontSize: 15,
-        fontWeight: '600',
-        color: COLORS.text,
-    },
-    totalRow: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        paddingVertical: 15,
-        paddingHorizontal: 15,
-        backgroundColor: COLORS.background, // Fond légèrement différent pour le total
-    },
-    totalLabel: {
-        fontSize: 18,
-        fontWeight: '700',
-        color: COLORS.text,
-    },
-    totalValue: {
-        fontSize: 18,
-        fontWeight: '800',
-        color: COLORS.primary,
-    },
-    // --- Bouton de Paiement Fixe ---
-    checkoutContainer: {
-        position: 'absolute',
-        bottom: 0,
-        left: 0,
-        right: 0,
-        paddingHorizontal: 20,
-        paddingVertical: 15,
-        backgroundColor: COLORS.card,
-        borderTopWidth: 1,
-        borderTopColor: COLORS.border,
-        ...Platform.select({
-            ios: {
-                shadowColor: "#000",
-                shadowOffset: { width: 0, height: -2 },
-                shadowOpacity: 0.1,
-                shadowRadius: 4,
-            },
-            android: {
-                elevation: 10,
-            },
-        }),
-    },
-    checkoutButton: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: COLORS.success, // Couleur de succès pour l'action finale (Paiement)
-        paddingVertical: 18,
-        borderRadius: 12,
-        shadowColor: COLORS.success,
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 5,
-        elevation: 5,
-    },
-    checkoutButtonText: {
-        color: COLORS.card,
-        fontSize: 18,
-        fontWeight: '700',
-    },
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: COLORS.background, paddingTop: Platform.OS === "android" ? 40 : 0 },
+  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 20, paddingVertical: 15 },
+  headerTitle: { fontSize: 24, fontWeight: "800", color: COLORS.text },
+  clearButton: { color: COLORS.danger, fontWeight: "600", fontSize: 16 },
+  listContent: { paddingHorizontal: 20, paddingBottom: 20 },
+  cartItem: { flexDirection: "row", backgroundColor: COLORS.card, borderRadius: 12, padding: 12, marginBottom: 15, borderWidth: 1, borderColor: COLORS.border },
+  itemImageContainer: { marginRight: 12 },
+  itemImage: { width: 70, height: 70, borderRadius: 8 },
+  placeholderImage: { justifyContent: "center", alignItems: "center", backgroundColor: COLORS.background },
+  itemDetails: { flex: 1, justifyContent: "center" },
+  itemName: { fontSize: 16, fontWeight: "700", color: COLORS.text, marginBottom: 4 },
+  itemCooker: { fontSize: 12, color: COLORS.primary, marginBottom: 6 },
+  itemPrice: { fontSize: 15, fontWeight: "600", color: COLORS.accentGreen },
+  itemActions: { justifyContent: "space-between", alignItems: "center" },
+  quantityControls: { flexDirection: "row", alignItems: "center", gap: 10 },
+  quantityText: { fontSize: 16, fontWeight: "700", color: COLORS.text, minWidth: 25, textAlign: "center" },
+  deleteButton: { marginTop: 10, padding: 5 },
+  footer: { backgroundColor: COLORS.card, paddingHorizontal: 20, paddingVertical: 15, borderTopWidth: 1, borderTopColor: COLORS.border },
+  totalContainer: { flexDirection: "row", justifyContent: "space-between", marginBottom: 15 },
+  totalLabel: { fontSize: 18, fontWeight: "600", color: COLORS.subtitle },
+  totalAmount: { fontSize: 22, fontWeight: "800", color: COLORS.primary },
+  orderButton: { flexDirection: "row", justifyContent: "center", alignItems: "center", backgroundColor: COLORS.primary, paddingVertical: 14, borderRadius: 12, gap: 8 },
+  orderButtonText: { color: "#FFF", fontSize: 16, fontWeight: "700" },
+  emptyContainer: { flex: 1, justifyContent: "center", alignItems: "center", paddingHorizontal: 40 },
+  emptyText: { fontSize: 20, fontWeight: "700", color: COLORS.text, marginTop: 20 },
+  emptySubtext: { fontSize: 14, color: COLORS.subtitle, marginTop: 8, textAlign: "center" },
+  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", alignItems: "center" },
+  modalContent: { width: "90%", backgroundColor: COLORS.card, borderRadius: 20, padding: 20 },
+  modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 20 },
+  modalTitle: { fontSize: 20, fontWeight: "700", color: COLORS.text },
+  modalLabel: { fontSize: 15, fontWeight: "600", color: COLORS.text, marginBottom: 10, marginTop: 10 },
+  deliveryOptions: { flexDirection: "row", gap: 10, marginBottom: 15 },
+  optionButton: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 12, borderRadius: 8, backgroundColor: COLORS.background, borderWidth: 2, borderColor: COLORS.border, gap: 8 },
+  optionButtonActive: { backgroundColor: COLORS.secondary, borderColor: COLORS.secondary },
+  optionText: { fontSize: 14, fontWeight: "600", color: COLORS.subtitle },
+  optionTextActive: { color: COLORS.card },
+  addressInput: { backgroundColor: COLORS.background, borderRadius: 8, padding: 12, fontSize: 14, color: COLORS.text, borderWidth: 1, borderColor: COLORS.border, minHeight: 80, textAlignVertical: "top" },
+  modalFooter: { marginTop: 20 },
+  modalTotal: { fontSize: 18, fontWeight: "700", color: COLORS.text, marginBottom: 15, textAlign: "center" },
+  confirmButton: { backgroundColor: COLORS.accentGreen, paddingVertical: 14, borderRadius: 12, alignItems: "center" },
+  confirmButtonText: { color: "#FFF", fontSize: 16, fontWeight: "700" },
 });

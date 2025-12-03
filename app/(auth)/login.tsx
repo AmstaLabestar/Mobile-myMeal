@@ -34,8 +34,8 @@ export default function LoginScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Bienvenue !</Text>
-      <Text style={styles.subtitle}>Connectez-vous à votre compte</Text>
+      <Text style={styles.title}>Bienvenue sur myMeal !</Text>
+      <Text style={styles.subtitle}>Connectez-vous et pour profiter de nos services </Text>
 
       {/* Input Identifiant */}
       <View style={styles.inputContainer}>
